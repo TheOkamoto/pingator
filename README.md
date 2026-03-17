@@ -66,7 +66,7 @@ You can view your Pingator dashboard from any device on the same Wi-Fi network!
 1. **Start the app explicitly exposing the network address:**
    streamlit run app.py --server.address=0.0.0.0
 
-2. **Find your PC's local IP address** (e.g., 192.168.1.62).
+2. **Find your PC's local IP address** (e.g., 192.168.1.3).
 
 3. **Open a browser on your phone and go to:** http://YOUR_LOCAL_IP:8501
 

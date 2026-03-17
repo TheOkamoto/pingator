@@ -25,7 +25,7 @@
 
 1. **Clone the repository:**
 
-   $ git clone git@github.com:YOUR_USERNAME/pingator.git
+   $ git clone https://github.com/TheOkamoto/pingator.git
    $ cd pingator
 
 

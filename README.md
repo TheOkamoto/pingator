@@ -26,6 +26,7 @@
 1. **Clone the repository:**
 
    $ git clone https://github.com/TheOkamoto/pingator.git
+   
    $ cd pingator
 
 

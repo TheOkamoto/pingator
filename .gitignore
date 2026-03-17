@@ -1,0 +1,15 @@
+# Arquivos do banco de dados
+pingator_v2.db
+pingator_v2.db-journal
+pingator_v2.db-wal
+pingator_v2.db-shm
+
+# Arquivos temporários do Python (Cache)
+__pycache__/
+*.pyc
+*.pyo
+
+# Ambientes virtuais (caso você use no futuro)
+venv/
+.venv/
+env/

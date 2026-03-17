@@ -1,0 +1,17 @@
+/* style.css - Pingator Stylesheet */
+
+/* Hides ONLY the Streamlit Deploy button */
+.stAppDeployButton {
+    display: none !important;
+}
+
+/* Makes the top menu transparent to avoid an ugly solid bar */
+[data-testid="stHeader"] {
+    background-color: transparent !important;
+}
+
+/* Adds a healthy top padding so the header doesn't crush the title */
+.block-container {
+    padding-top: 3rem !important;
+    padding-bottom: 1rem !important;
+}

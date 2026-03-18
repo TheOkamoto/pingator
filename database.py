@@ -1,22 +1,33 @@
 import sqlite3
 import os
+from datetime import datetime, timedelta
 
 # Ensures the database is always saved in the script's directory
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'pingator_v2.db')
 
+# --- DATA RETENTION CONFIGURATION ---
+# Quantos dias os registros de ping ficarão salvos no banco de dados.
+# Você pode mudar isso para 14, 30, etc.
+RETENTION_DAYS = 7
+
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
     
     # --- HDD SAVING OPTIMIZATIONS ---
-    # Enables Write-Ahead Logging (absurdly faster writes)
     conn.execute("PRAGMA journal_mode = WAL;")
-    # Reduces the frequency of forced synchronization to the physical disk
     conn.execute("PRAGMA synchronous = NORMAL;")
-    # Frees up ~64MB of RAM for SQLite to use as a buffer before bothering the HDD
     conn.execute("PRAGMA cache_size = -64000;")
     
     return conn
+
+def cleanup_old_pings():
+    """Deletes ping records older than RETENTION_DAYS."""
+    conn = get_conn()
+    c = conn.cursor()
+    cutoff_date = datetime.now() - timedelta(days=RETENTION_DAYS)
+    c.execute("DELETE FROM pings WHERE timestamp < ?", (cutoff_date,))
+    conn.commit()
 
 def init_db():
     conn = get_conn()
@@ -25,6 +36,11 @@ def init_db():
     # Table for network metrics
     c.execute('''CREATE TABLE IF NOT EXISTS pings
                  (timestamp TIMESTAMP, main_target TEXT, pinged_ip TEXT, latency REAL, packet_loss INTEGER)''')
+                 
+    # --- PERFORMANCE INDEXES ---
+    # Faz com que os gráficos carreguem muito mais rápido e a deleção seja instantânea
+    c.execute('CREATE INDEX IF NOT EXISTS idx_pings_timestamp ON pings(timestamp)')
+    c.execute('CREATE INDEX IF NOT EXISTS idx_pings_main_target ON pings(main_target)')
                  
     # Table to persist UI tabs
     c.execute('''CREATE TABLE IF NOT EXISTS targets (target TEXT UNIQUE)''')
@@ -39,6 +55,9 @@ def init_db():
         pass 
 
     conn.commit()
+    
+    # Runs the cleanup routine every time the database initializes (app startup)
+    cleanup_old_pings()
     
     # If the targets table is empty (first run), insert a default target
     c.execute("SELECT count(*) FROM targets")

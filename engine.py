@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import datetime
 from ping3 import ping
 
-from database import init_db
+from database import init_db, cleanup_old_pings
 
 class NetworkEngine:
     def __init__(self, target):
@@ -118,7 +118,18 @@ class NetworkEngine:
             time.sleep(1)
 
     def _run_route(self):
-        """Slow loop for dynamic route updates"""
+        """Slow loop for dynamic route updates and DB maintenance"""
+        loop_counter = 0
         while self.running:
             self.discover_route()
-            time.sleep(30) # Wait 30 seconds before re-tracing
+            
+            # Runs the database cleanup approximately every 1 hour (120 loops of 30s)
+            loop_counter += 1
+            if loop_counter >= 120:
+                try:
+                    cleanup_old_pings()
+                except Exception:
+                    pass
+                loop_counter = 0
+                
+            time.sleep(30)

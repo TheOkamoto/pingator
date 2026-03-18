@@ -7,8 +7,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'pingator_v2.db')
 
 # --- DATA RETENTION CONFIGURATION ---
-# Quantos dias os registros de ping ficarão salvos no banco de dados.
-# Você pode mudar isso para 14, 30, etc.
 RETENTION_DAYS = 7
 
 def get_conn():

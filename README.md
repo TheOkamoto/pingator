@@ -1,6 +1,6 @@
 # 📈 Pingator - Multi-Target & Route Monitor
 
-**Pingator** is a lightweight, modern, and persistent network monitoring tool built with Python and Streamlit. It allows you to track ICMP latency, packet loss, and dynamic routing (traceroute) across multiple targets simultaneously, all visualized in a sleek, real-time dashboard.
+**Pingator** is a lightweight, modern, and persistent network monitoring tool built with Python and Streamlit. It allows you to track ICMP latency, packet loss, and dynamic routing (traceroute) across multiple targets simultaneously, all visualized in a sleek, real-time dashboard. And yes, it was entirely vibe coded.
 
 ## ✨ Key Features
 

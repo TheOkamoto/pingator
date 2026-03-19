@@ -76,7 +76,7 @@ with col_title:
         </div>
     """, unsafe_allow_html=True)
 with col_input:
-    new_target = st.text_input("Add new target", placeholder="e.g., discord.com", label_visibility="collapsed")
+    new_target = st.text_input("Add new target", placeholder="Put a website URL here", label_visibility="collapsed")
 with col_btn:
     if st.button(":material/add: Add Target", width="stretch") and new_target:
         if new_target not in st.session_state.targets:

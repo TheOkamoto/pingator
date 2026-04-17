@@ -4,7 +4,7 @@ import subprocess
 import platform
 import socket
 import pandas as pd
-import traceback # --- NEW: Library to capture full error logs ---
+import traceback 
 from datetime import datetime
 from ping3 import ping
 
@@ -18,9 +18,8 @@ class NetworkEngine:
         self.route_thread = None
         self.route_data = pd.DataFrame() 
         self.raw_traceroute_log = "" 
-        self.is_tracing = False 
-        
-        # --- NEW: Error tracking variables ---
+        self.is_tracing = False         
+        # --- Error tracking variables ---
         self.last_error = None
         self.error_time = None     
 
@@ -140,7 +139,6 @@ class NetworkEngine:
                 time.sleep(1)
                 
             except Exception as e:
-                # --- NEW: Capture the full error and send it to the UI ---
                 self.last_error = traceback.format_exc()
                 self.error_time = datetime.now()
                 # Sleep a bit longer to prevent log flooding during a crash loop
@@ -163,7 +161,6 @@ class NetworkEngine:
                     loop_counter = 0
                     
             except Exception as e:
-                # --- NEW: Capture route/maintenance errors ---
                 self.last_error = traceback.format_exc()
                 self.error_time = datetime.now()
                 

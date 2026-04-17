@@ -5,9 +5,9 @@ from datetime import datetime, timedelta
 
 from database import get_conn
 
-# --- SINGLE LIVE DASHBOARD FRAGMENT ---
+# --- 1. SINGLE LIVE DASHBOARD FRAGMENT (Updates 1s) ---
 @st.fragment(run_every=1)
-def render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h):
+def render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h, name_col_w):
     
     # ==========================================
     # --- ERROR DEBUGGER CONSOLE ---------------
@@ -94,7 +94,22 @@ def render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_grap
         if all(col in display_df.columns for col in correct_columns):
             display_df = display_df[correct_columns]
 
-        st.dataframe(display_df, hide_index=True, width="stretch")
+        # --- Fixed Column Widths Configuration ---
+        st.dataframe(
+            display_df, 
+            hide_index=True, 
+            use_container_width=True,
+            column_config={
+                "Hop": st.column_config.NumberColumn("Hop", width="small"),
+                "IP": st.column_config.TextColumn("IP", width="medium"),
+                "Name": st.column_config.TextColumn("Name", width=name_col_w),
+                "Avg (ms)": st.column_config.TextColumn("Avg (ms)", width="small"),
+                "Min (ms)": st.column_config.TextColumn("Min (ms)", width="small"),
+                "Max (ms)": st.column_config.TextColumn("Max (ms)", width="small"),
+                "Cur (ms)": st.column_config.TextColumn("Cur (ms)", width="small"),
+                "PL%": st.column_config.TextColumn("PL%", width="small")
+            }
+        )
     elif not getattr(engine, 'is_tracing', False) and engine.running:
         st.info("Waiting for the first routing cycle...")
 
@@ -174,7 +189,8 @@ def render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_grap
         st.info(f"Waiting for data for {selected_ip_to_graph}...")
 
     st.write("")
-    
+@st.fragment(run_every=15)
+def render_debug_log(engine):
     with st.expander(":material/bug_report: Expandable Traceroute Debug"):
         log = getattr(engine, 'raw_traceroute_log', '')
         if log:

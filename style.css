@@ -15,3 +15,27 @@
     padding-top: 3rem !important;
     padding-bottom: 1rem !important;
 }
+
+/* 1. Kills the loading skeletons entirely */
+[data-testid="stSkeleton"] {
+    display: none !important;
+}
+
+/* 2. FORCES opacity to stay at 100% during updates. 
+   This stops the "breathing/fading" effect on tables, charts, and metrics */
+.element-container, 
+[data-testid="stDataFrame"], 
+[data-testid="stAltairChart"],
+[data-testid="stMetricValue"],
+[data-testid="stMetricLabel"] {
+    opacity: 1 !important;
+}
+
+/* 3. SPECIFIC BRUTE-FORCE FIX FOR THE EXPANDER 
+   Targets the box and ALL its internal hidden layers */
+[data-testid="stExpander"], 
+[data-testid="stExpander"] * {
+    opacity: 1 !important;
+    transition: none !important;
+    animation: none !important;
+}

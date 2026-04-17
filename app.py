@@ -1,8 +1,10 @@
 import streamlit as st
 import time
 import os
+
+# --- IMPORT OUR NEW MODULES ---
 from utils import get_base64_image, load_local_css
-from dashboard import render_live_dashboard
+from dashboard import render_live_dashboard, render_debug_log
 
 from database import (
     init_db, get_saved_targets, add_saved_target, 
@@ -187,11 +189,22 @@ with c_ip:
     )
 
 with c_layout:
-    st.markdown("<div style='font-size: 0.85rem; color: rgba(250, 250, 250, 0.6); margin-bottom: 0.25rem;'>Chart Size:</div>", unsafe_allow_html=True)
-    with st.popover(":material/settings: Resize Chart", width="stretch"):
-        chart_h = st.slider("Height (px)", 150, 800, get_setting('chart_height', 250), step=10)
+    st.markdown("<div style='font-size: 0.85rem; color: rgba(250, 250, 250, 0.6); margin-bottom: 0.25rem;'>UI Settings:</div>", unsafe_allow_html=True)
+    with st.popover(":material/settings: Layout Options", width="stretch"):
+        
+        # Chart Height setting
+        chart_h = st.slider("Chart Height (px)", 150, 800, get_setting('chart_height', 250), step=10)
         if chart_h != get_setting('chart_height', 250):
             set_setting('chart_height', chart_h)
+            
+        # Name Column Width setting
+        name_col_w = st.slider("Name Col Width (px)", 100, 800, get_setting('name_col_width', 300), step=10)
+        if name_col_w != get_setting('name_col_width', 300):
+            set_setting('name_col_width', name_col_w)
 
-# --- CALL THE IMPORTED FRAGMENT ---
-render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h)
+# --- CALL THE IMPORTED FRAGMENTS ---
+# 1. The ultra-fast fragment for the chart (Updates 1s)
+render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h, name_col_w)
+
+# 2. The slow fragment for the logs (Updates 15s)
+render_debug_log(engine)

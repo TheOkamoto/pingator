@@ -4,10 +4,11 @@ import subprocess
 import platform
 import socket
 import pandas as pd
+import traceback # --- NEW: Library to capture full error logs ---
 from datetime import datetime
 from ping3 import ping
 
-from database import init_db, cleanup_old_pings
+from database import init_db, cleanup_old_pings, get_conn 
 
 class NetworkEngine:
     def __init__(self, target):
@@ -17,7 +18,11 @@ class NetworkEngine:
         self.route_thread = None
         self.route_data = pd.DataFrame() 
         self.raw_traceroute_log = "" 
-        self.is_tracing = False      
+        self.is_tracing = False 
+        
+        # --- NEW: Error tracking variables ---
+        self.last_error = None
+        self.error_time = None     
 
     def discover_route(self):
         self.is_tracing = True
@@ -28,7 +33,11 @@ class NetworkEngine:
         command = ['tracert', '-d', '-h', '15', '-w', '1000', self.target] if is_windows else ['traceroute', '-n', '-m', '15', '-w', '1', self.target]
             
         try:
-            result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45)
+            if is_windows:
+                # 0x08000000 is CREATE_NO_WINDOW. It forces the tracert process to be completely invisible!
+                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45, creationflags=0x08000000)
+            else:
+                result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45)
             
             # Save raw log for the UI Debug panel
             current_time = datetime.now().strftime("%H:%M:%S")
@@ -78,6 +87,8 @@ class NetworkEngine:
 
     def start(self):
         self.running = True
+        # Clear previous errors when starting
+        self.last_error = None 
         if self.ping_thread is None or not self.ping_thread.is_alive():
             self.ping_thread = threading.Thread(target=self._run_ping, daemon=True)
             self.ping_thread.start()
@@ -90,46 +101,70 @@ class NetworkEngine:
 
     def _run_ping(self):
         """Fast loop for latency tracking"""
-        conn = init_db()
-        c = conn.cursor()
-
         while self.running:
-            ips_to_ping = [self.target]
-            if not self.route_data.empty:
-                hop_ips = self.route_data['IP'].tolist()
-                valid_hops = [ip for ip in hop_ips if ip not in ["Request timed out", "Error parsing route", "Tracing..."]]
-                ips_to_ping.extend(valid_hops)
-            
-            ips_to_ping = list(set(ips_to_ping)) # Remove duplicates
-            now = datetime.now()
-            
-            # Sequential ping to avoid triggering firewall DDoS protections
-            for ip in ips_to_ping:
+            try:
+                ips_to_ping = [self.target]
+                if not self.route_data.empty:
+                    hop_ips = self.route_data['IP'].tolist()
+                    valid_hops = [ip for ip in hop_ips if ip not in ["Request timed out", "Error parsing route", "Tracing..."]]
+                    ips_to_ping.extend(valid_hops)
+                
+                ips_to_ping = list(set(ips_to_ping)) # Remove duplicates
+                now = datetime.now()
+                
+                # 1. RUN PINGS FIRST (Without locking the database)
+                ping_results = []
+                for ip in ips_to_ping:
+                    try:
+                        delay = ping(ip, unit='ms', timeout=0.5)
+                        if delay is None or delay is False:
+                            ping_results.append((now, self.target, ip, 0, 1))
+                        else:
+                            ping_results.append((now, self.target, ip, delay, 0))
+                    except Exception:
+                        ping_results.append((now, self.target, ip, 0, 1))
+                
+                # 2. OPEN DB, SAVE BATCH, AND CLOSE IMMEDIATELY
                 try:
-                    delay = ping(ip, unit='ms', timeout=0.5)
-                    if delay is None or delay is False:
-                        c.execute("INSERT INTO pings VALUES (?, ?, ?, ?, ?)", (now, self.target, ip, 0, 1))
-                    else:
-                        c.execute("INSERT INTO pings VALUES (?, ?, ?, ?, ?)", (now, self.target, ip, delay, 0))
-                except Exception:
-                    c.execute("INSERT INTO pings VALUES (?, ?, ?, ?, ?)", (now, self.target, ip, 0, 1))
-            
-            conn.commit()
-            time.sleep(1)
+                    conn = get_conn()
+                    c = conn.cursor()
+                    c.executemany("INSERT INTO pings VALUES (?, ?, ?, ?, ?)", ping_results)
+                    conn.commit()
+                except Exception as e:
+                    # If a critical DB error happens, throw it to the main exception handler
+                    raise e
+                finally:
+                    if 'conn' in locals():
+                        conn.close()
+                
+                time.sleep(1)
+                
+            except Exception as e:
+                # --- NEW: Capture the full error and send it to the UI ---
+                self.last_error = traceback.format_exc()
+                self.error_time = datetime.now()
+                # Sleep a bit longer to prevent log flooding during a crash loop
+                time.sleep(2) 
 
     def _run_route(self):
         """Slow loop for dynamic route updates and DB maintenance"""
         loop_counter = 0
         while self.running:
-            self.discover_route()
-            
-            # Runs the database cleanup approximately every 1 hour (120 loops of 30s)
-            loop_counter += 1
-            if loop_counter >= 120:
-                try:
-                    cleanup_old_pings()
-                except Exception:
-                    pass
-                loop_counter = 0
+            try:
+                self.discover_route()
+                
+                # Runs the database cleanup approximately every 1 hour (120 loops of 30s)
+                loop_counter += 1
+                if loop_counter >= 120:
+                    try:
+                        cleanup_old_pings()
+                    except Exception as e:
+                        raise e # Pass DB cleanup errors up
+                    loop_counter = 0
+                    
+            except Exception as e:
+                # --- NEW: Capture route/maintenance errors ---
+                self.last_error = traceback.format_exc()
+                self.error_time = datetime.now()
                 
             time.sleep(30)

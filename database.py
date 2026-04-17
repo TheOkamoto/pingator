@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'pingator_v2.db')
 
 # --- DATA RETENTION CONFIGURATION ---
-RETENTION_DAYS = 7
+RETENTION_DAYS = 3
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=15)
@@ -36,7 +36,6 @@ def init_db():
                  (timestamp TIMESTAMP, main_target TEXT, pinged_ip TEXT, latency REAL, packet_loss INTEGER)''')
                  
     # --- PERFORMANCE INDEXES ---
-    # Faz com que os gráficos carreguem muito mais rápido e a deleção seja instantânea
     c.execute('CREATE INDEX IF NOT EXISTS idx_pings_timestamp ON pings(timestamp)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_pings_main_target ON pings(main_target)')
                  

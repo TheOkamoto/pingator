@@ -1,29 +1,17 @@
 import streamlit as st
-import pandas as pd
-import altair as alt
-import base64
+import time
 import os
-from datetime import datetime, timedelta
+from utils import get_base64_image, load_local_css
+from dashboard import render_live_dashboard
 
 from database import (
-    get_conn, init_db, get_saved_targets, add_saved_target, 
+    init_db, get_saved_targets, add_saved_target, 
     remove_saved_target, update_timeframe, get_timeframe,
     get_last_tab, set_last_tab, get_setting, set_setting
 )
 from engine import NetworkEngine
 
-# --- ASSET LOADING FUNCTIONS ---
-def get_base64_image(file_path):
-    if os.path.exists(file_path):
-        with open(file_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    return ""
-
-def load_local_css(file_name):
-    if os.path.exists(file_name):
-        with open(file_name, "r") as f:
-            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
+# Setup Icons and CSS
 icon_b64 = get_base64_image("icon.png")
 if icon_b64:
     icon_html = f"<img src='data:image/png;base64,{icon_b64}' width='32' height='32' style='border-radius: 6px; object-fit: contain;'>"
@@ -40,21 +28,18 @@ engines = get_engines()
 init_db() 
 
 # --- DYNAMIC TAB TITLE MAGIC ---
-# Read from session or database BEFORE setting page config
+if "title_error_state" not in st.session_state:
+    st.session_state.title_error_state = False
+
 if "target_selector" in st.session_state:
     active_tab = st.session_state.target_selector
 else:
     active_tab = get_last_tab()
 
-if active_tab:
-    dynamic_page_title = f"Pingator - Multi-Target & Route Monitor - {active_tab}"
-else:
-    dynamic_page_title = "Pingator - Multi-Target & Route Monitor"
+error_prefix = "(1) Notification - " if st.session_state.title_error_state else ""
+dynamic_page_title = f"{error_prefix}Pingator - {active_tab}" if active_tab else f"{error_prefix}Pingator"
 
-# Apply the dynamic title to the browser tab!
 st.set_page_config(page_title=dynamic_page_title, page_icon=page_icon_config, layout="wide", initial_sidebar_state="collapsed")
-
-# LOAD OUR EXTERNAL CSS FILE HERE! 🪄
 load_local_css("style.css")
 
 if "targets" not in st.session_state:
@@ -64,8 +49,9 @@ if "targets" not in st.session_state:
             engines[t] = NetworkEngine(t)
             engines[t].start()
 
-# --- ALIGNED TITLE ---
-col_title, col_input, col_btn = st.columns([2, 7, 2])
+# --- ALIGNED TITLE & CONTROL BUTTONS ---
+col_title, col_input, col_add, col_restart, col_quit = st.columns([2.5, 3.5, 2, 2, 2])
+
 with col_title:
     st.markdown(f"""
         <div style='height: 40px; display: flex; align-items: center;'>
@@ -75,9 +61,11 @@ with col_title:
             </h3>
         </div>
     """, unsafe_allow_html=True)
+    
 with col_input:
-    new_target = st.text_input("Add new target", placeholder="Put a website URL here", label_visibility="collapsed")
-with col_btn:
+    new_target = st.text_input("Add new target", placeholder="e.g., discord.com", label_visibility="collapsed")
+    
+with col_add:
     if st.button(":material/add: Add Target", width="stretch") and new_target:
         if new_target not in st.session_state.targets:
             add_saved_target(new_target) 
@@ -87,6 +75,23 @@ with col_btn:
             set_last_tab(new_target) 
             st.rerun()
 
+with col_restart:
+    if st.button(":material/restart_alt: Restart", width="stretch", help="Restarts all background engines"):
+        for eng in engines.values():
+            eng.stop()
+        get_engines.clear()
+        st.toast("Restarting engines...")
+        time.sleep(0.5)
+        st.rerun()
+
+with col_quit:
+    if st.button(":material/power_settings_new: Quit", type="primary", width="stretch", help="Shuts down the application completely"):
+        for eng in engines.values():
+            eng.stop()
+        st.toast("Shutting down server... You can close this browser tab.")
+        time.sleep(1) 
+        os._exit(0)
+
 st.write("") 
 
 if not st.session_state.targets:
@@ -95,7 +100,6 @@ if not st.session_state.targets:
 
 # --- TARGET NAVIGATION ---
 last_tab = get_last_tab()
-
 try:
     default_index = st.session_state.targets.index(last_tab)
 except ValueError:
@@ -107,7 +111,7 @@ selected_target = st.radio(
     index=default_index,
     horizontal=True,
     label_visibility="collapsed",
-    key="target_selector"  # <-- The key that allows the title to read this selection at the top!
+    key="target_selector" 
 )
 
 if selected_target != last_tab:
@@ -189,118 +193,5 @@ with c_layout:
         if chart_h != get_setting('chart_height', 250):
             set_setting('chart_height', chart_h)
 
-# --- SINGLE LIVE DASHBOARD FRAGMENT ---
-@st.fragment(run_every=1)
-def render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h):
-    conn = get_conn() 
-    time_limit = datetime.now() - timedelta(minutes=minutes_filter)
-
-    col_title, col_spin = st.columns([2, 8])
-    with col_title:
-        st.markdown("#### Route Information")
-    
-    if getattr(engine, 'is_tracing', False):
-        with col_spin:
-            with st.spinner("Discovering..."):
-                st.empty()
-    
-    display_df = engine.route_data.copy()
-    if not display_df.empty:
-        df_stats = pd.read_sql_query(
-            "SELECT pinged_ip, latency, packet_loss FROM pings WHERE main_target = ? AND timestamp >= ?", 
-            conn, params=(target_id, time_limit)
-        )
-        
-        if not df_stats.empty:
-            for index, row in display_df.iterrows():
-                ip = row['IP']
-                if ip not in ["Request timed out", "Error parsing route", "Tracing..."]:
-                    ip_data = df_stats[df_stats['pinged_ip'] == ip]
-                    if not ip_data.empty:
-                        total = len(ip_data)
-                        loss = ip_data['packet_loss'].sum()
-                        success_data = ip_data[ip_data['packet_loss'] == 0]
-                        
-                        display_df.at[index, 'PL%'] = f"{(loss/total)*100:.1f}%"
-                        if not success_data.empty:
-                            display_df.at[index, 'Avg (ms)'] = f"{success_data['latency'].mean():.1f}"
-                            display_df.at[index, 'Min (ms)'] = f"{success_data['latency'].min():.1f}"
-                            display_df.at[index, 'Max (ms)'] = f"{success_data['latency'].max():.1f}"
-                            display_df.at[index, 'Cur (ms)'] = f"{success_data.iloc[-1]['latency']:.1f}"
-
-        correct_columns = ["Hop", "IP", "Name", "Avg (ms)", "Min (ms)", "Max (ms)", "Cur (ms)", "PL%"]
-        if all(col in display_df.columns for col in correct_columns):
-            display_df = display_df[correct_columns]
-
-        st.dataframe(display_df, hide_index=True, width="stretch")
-    elif not getattr(engine, 'is_tracing', False) and engine.running:
-        st.info("Waiting for the first routing cycle...")
-
-    st.markdown("#### Latency Chart")
-
-    df = pd.read_sql_query(
-        "SELECT * FROM pings WHERE main_target = ? AND pinged_ip = ? AND timestamp >= ?", 
-        conn, params=(target_id, selected_ip_to_graph, time_limit), parse_dates=['timestamp']
-    )
-
-    if not df.empty:
-        max_y = df['latency'].max() if df['latency'].max() > 0 else 100
-        
-        df_success = df[df['packet_loss'] == 0]
-        area_chart = alt.Chart(df_success).mark_area(
-            opacity=0.3,
-            color='#0068c9',
-            line={'color': '#0068c9', 'strokeWidth': 2}
-        ).encode(
-            x=alt.X('timestamp:T', title='Time', axis=alt.Axis(format='%H:%M:%S', gridColor='rgba(255,255,255,0.05)')),
-            y=alt.Y('latency:Q', title='Milliseconds (ms)', axis=alt.Axis(gridColor='rgba(255,255,255,0.05)')),
-            tooltip=['timestamp:T', 'latency:Q']
-        )
-
-        df_loss = df[df['packet_loss'] == 1].copy()
-        if not df_loss.empty:
-            df_loss['loss_height'] = max_y * 1.1 
-            loss_bars = alt.Chart(df_loss).mark_bar(
-                color='red', 
-                size=3 
-            ).encode(
-                x='timestamp:T',
-                y=alt.Y('loss_height:Q'),
-                tooltip=['timestamp:T']
-            )
-            final_chart = alt.layer(area_chart, loss_bars)
-        else:
-            final_chart = area_chart
-
-        final_chart = final_chart.properties(
-            height=chart_h
-        ).configure_view(
-            strokeWidth=0
-        )
-
-        st.altair_chart(final_chart, width="stretch")
-        
-        last_ping = df.iloc[-1]
-        if last_ping['packet_loss'] == 1:
-            cur_lat_str = "Timeout"
-        else:
-            cur_lat_str = f"{last_ping['latency']:.1f} ms"
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric(f"Cur Latency ({selected_ip_to_graph})", cur_lat_str)
-        c2.metric("Avg Latency", f"{df['latency'].mean():.1f} ms")
-        c3.metric("Peak Latency", f"{df['latency'].max():.1f} ms")
-        c4.metric("Packets Lost", f"{df['packet_loss'].sum()} ({ (df['packet_loss'].sum() / len(df)) * 100:.1f}%)")
-    else:
-        st.info(f"Waiting for data for {selected_ip_to_graph}...")
-
-    st.write("")
-    
-    with st.expander(":material/bug_report: Expandable Traceroute Debug"):
-        log = getattr(engine, 'raw_traceroute_log', '')
-        if log:
-            st.code(log, language="text")
-        else:
-            st.write("No traceroute executed yet. Wait for the loading cycle.")
-
+# --- CALL THE IMPORTED FRAGMENT ---
 render_live_dashboard(target_id, engine, minutes_filter, selected_ip_to_graph, chart_h)

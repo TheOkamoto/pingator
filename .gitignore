@@ -1,15 +1,15 @@
-# DB Files
+# Database files
 pingator_v2.db
 pingator_v2.db-journal
 pingator_v2.db-wal
 pingator_v2.db-shm
 
-# Python cache files
+# Python temporary files (Cache)
 __pycache__/
 *.pyc
 *.pyo
 
-# Virtual environment directories
+# Virtual environments 
 venv/
 .venv/
 env/

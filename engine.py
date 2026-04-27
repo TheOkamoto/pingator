@@ -19,6 +19,7 @@ class NetworkEngine:
         self.route_data = pd.DataFrame() 
         self.raw_traceroute_log = "" 
         self.is_tracing = False 
+        self.is_active_ui = False # <--- NOVO: Sabe se está na tela ou no background
         
         # --- Error tracking variables ---
         self.last_error = None
@@ -112,7 +113,7 @@ class NetworkEngine:
                 ips_to_ping = list(set(ips_to_ping)) # Remove duplicates
                 now = datetime.now()
                 
-                # 1. RUN PINGS FIRST (Without locking the database)
+                # 1. RUN PINGS FIRST
                 ping_results = []
                 for ip in ips_to_ping:
                     try:
@@ -124,31 +125,37 @@ class NetworkEngine:
                     except Exception:
                         ping_results.append((now, self.target, ip, 0, 1))
                     
-                    # --- ANTI-FLOOD PROTECTION ---
-                    # Sleeps for 100ms between each ping to avoid router ICMP Rate Limiting.
-                    # This prevents the router from dropping packets thinking it's a DDoS attack.
+                    # Anti-flood protection (100ms)
                     time.sleep(0.1)
                 
-                # 2. OPEN DB, SAVE BATCH, AND CLOSE IMMEDIATELY
+                # 2. SAVE TO DATABASE
                 try:
                     conn = get_conn()
                     c = conn.cursor()
                     c.executemany("INSERT INTO pings VALUES (?, ?, ?, ?, ?)", ping_results)
                     conn.commit()
                 except Exception as e:
-                    # If a critical DB error happens, throw it to the main exception handler
                     raise e
                 finally:
                     if 'conn' in locals():
                         conn.close()
                 
-                # Sleep for 2 seconds to reduce overall network stress
-                time.sleep(2)
+                # --- 3. SMART SLEEP (Active vs Background) ---
+                # 1s for the active UI tab, 2s for background tabs
+                target_sleep = 1 if self.is_active_ui else 2
+                slept = 0
+                
+                while slept < target_sleep and self.running:
+                    time.sleep(1)
+                    slept += 1
+                    
+                    # Wake up instantly if the user clicks on this background tab!
+                    if self.is_active_ui and target_sleep == 2:
+                        break
                 
             except Exception as e:
                 self.last_error = traceback.format_exc()
                 self.error_time = datetime.now()
-                # Sleep a bit longer to prevent log flooding during a crash loop
                 time.sleep(2) 
 
     def _run_route(self):
@@ -156,6 +163,8 @@ class NetworkEngine:
         loop_counter = 0
         while self.running:
             try:
+                # --- UPDATE ROUTE LESS FREQUENTLY IF IN BACKGROUND ---
+                # Route trace takes time. Skip some traces if we are in background.
                 self.discover_route()
                 
                 # Runs the database cleanup approximately every 1 hour (120 loops of 30s)
@@ -164,7 +173,7 @@ class NetworkEngine:
                     try:
                         cleanup_old_pings()
                     except Exception as e:
-                        raise e # Pass DB cleanup errors up
+                        raise e 
                     loop_counter = 0
                     
             except Exception as e:

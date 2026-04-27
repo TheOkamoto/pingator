@@ -18,7 +18,8 @@ class NetworkEngine:
         self.route_thread = None
         self.route_data = pd.DataFrame() 
         self.raw_traceroute_log = "" 
-        self.is_tracing = False         
+        self.is_tracing = False 
+        
         # --- Error tracking variables ---
         self.last_error = None
         self.error_time = None     
@@ -66,7 +67,7 @@ class NetworkEngine:
                         except:
                             name = ip
                             
-                    # Table headers updated with (ms) and proper order
+                    # Table headers with (ms) and proper order
                     hops.append({
                         "Hop": hop_count, "IP": ip, "Name": name,
                         "Avg (ms)": "-", "Min (ms)": "-", "Max (ms)": "-", "Cur (ms)": "-", "PL%": "-"
@@ -122,6 +123,11 @@ class NetworkEngine:
                             ping_results.append((now, self.target, ip, delay, 0))
                     except Exception:
                         ping_results.append((now, self.target, ip, 0, 1))
+                    
+                    # --- ANTI-FLOOD PROTECTION ---
+                    # Sleeps for 100ms between each ping to avoid router ICMP Rate Limiting.
+                    # This prevents the router from dropping packets thinking it's a DDoS attack.
+                    time.sleep(0.1)
                 
                 # 2. OPEN DB, SAVE BATCH, AND CLOSE IMMEDIATELY
                 try:
@@ -136,7 +142,8 @@ class NetworkEngine:
                     if 'conn' in locals():
                         conn.close()
                 
-                time.sleep(1)
+                # Sleep for 2 seconds to reduce overall network stress
+                time.sleep(2)
                 
             except Exception as e:
                 self.last_error = traceback.format_exc()

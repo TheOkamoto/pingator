@@ -39,6 +39,14 @@ if not exist "venv\Scripts\python.exe" (
     )
 )
 
+:: 3. Streamlit Silent Configuration (The Magic for New Users)
+:: Cria o arquivo de credenciais invisivel com email em branco para pular a tela de boas vindas
+if not exist "%USERPROFILE%\.streamlit\credentials.toml" (
+    mkdir "%USERPROFILE%\.streamlit" 2>nul
+    echo [general]> "%USERPROFILE%\.streamlit\credentials.toml"
+    echo email = "">> "%USERPROFILE%\.streamlit\credentials.toml"
+)
+
 :: 4. Build Command (Background vs Debug)
 if "%MODE%"=="tray" (
     echo Starting Pingator in the System Tray...
@@ -50,9 +58,9 @@ if "%MODE%"=="tray" (
 ) else (
     echo Starting Pingator in Web mode...
     if "%DETACHED%"=="true" (
-        set CMD=venv\Scripts\pythonw.exe -m streamlit run app.py --server.address=0.0.0.0 !HEADLESS_FLAG!
+        set CMD=venv\Scripts\pythonw.exe -m streamlit run app.py --server.address=0.0.0.0 --browser.gatherUsageStats=false !HEADLESS_FLAG!
     ) else (
-        set CMD=venv\Scripts\streamlit.exe run app.py --server.address=0.0.0.0 !HEADLESS_FLAG!
+        set CMD=venv\Scripts\streamlit.exe run app.py --server.address=0.0.0.0 --browser.gatherUsageStats=false !HEADLESS_FLAG!
     )
 )
 

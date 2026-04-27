@@ -40,7 +40,6 @@ if not exist "venv\Scripts\python.exe" (
 )
 
 :: 3. Streamlit Silent Configuration (The Magic for New Users)
-:: Cria o arquivo de credenciais invisivel com email em branco para pular a tela de boas vindas
 if not exist "%USERPROFILE%\.streamlit\credentials.toml" (
     mkdir "%USERPROFILE%\.streamlit" 2>nul
     echo [general]> "%USERPROFILE%\.streamlit\credentials.toml"

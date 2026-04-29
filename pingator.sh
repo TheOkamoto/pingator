@@ -1,102 +1,90 @@
 #!/bin/bash
 
-# Colors for terminal formatting
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+echo "======================================="
+echo "     Pingator Launcher (Linux)"
+echo "======================================="
 
-echo -e "${CYAN}=======================================${NC}"
-echo -e "${CYAN}    🚀 Pingator Launcher (Linux)      ${NC}"
-echo -e "${CYAN}=======================================${NC}"
-
-# --- PARAMETER READING ---
+# 1. Parameter Reading
 MODE="web"
-DETACHED=true
+DETACHED="true"
+HEADLESS_FLAG=""
 
 for arg in "$@"; do
-    if [ "$arg" == "--tray" ]; then
-        MODE="tray"
-    elif [ "$arg" == "--debug" ]; then
-        DETACHED=false
-    fi
+    if [ "$arg" == "--tray" ]; then MODE="tray"; fi
+    if [ "$arg" == "--debug" ]; then DETACHED="false"; fi
+    if [ "$arg" == "--no-browser" ]; then HEADLESS_FLAG="--server.headless=true"; fi
 done
 
-# 1. Check and install system traceroute
-if ! command -v traceroute &> /dev/null; then
-    echo -e "${YELLOW}The system utility 'traceroute' was not found.${NC}"
-    read -p "Do you want to install traceroute now? (y/n): " install_tr
+# 2. Virtual Environment (venv) Setup
+if [ ! -f "venv/bin/python" ]; then
+    echo "[WARNING] The Python virtual environment (venv) was not found."
+    read -p "Do you want to create the environment and install packages now? (y/n): " install_venv
     
-    if [[ "$install_tr" == "y" || "$install_tr" == "Y" ]]; then
-        echo -e "\n${GREEN}Detecting package manager and installing...${NC}"
-        
-        if command -v apt &> /dev/null; then
-            sudo apt update && sudo apt install -y traceroute
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y traceroute
-        elif command -v pacman &> /dev/null; then
-            sudo pacman -S --noconfirm traceroute
-        else
-            echo -e "${YELLOW}Could not detect the package manager. Please install traceroute manually.${NC}"
-        fi
-        echo -e "${GREEN}Traceroute verification completed!${NC}\n"
-    else
-        echo -e "${YELLOW}Warning: The route mapping function (traceroute) will not work without this package.${NC}\n"
-    fi
-fi
-
-# 2. Interactive Virtual Environment (venv) Setup
-if [ ! -d "venv" ]; then
-    echo -e "${YELLOW}The Python virtual environment (venv) and dependencies were not found.${NC}"
-    read -p "Do you want to create the environment and install Python packages now? (y/n): " install_venv
-    
-    if [[ "$install_venv" == "y" || "$install_venv" == "Y" ]]; then
-        echo -e "\n${GREEN}Creating virtual environment...${NC}"
+    if [[ "$install_venv" =~ ^[Yy]$ ]]; then
+        echo "Creating virtual environment..."
         python3 -m venv venv
-        
         if [ $? -ne 0 ]; then
-            echo -e "${YELLOW}Error creating venv. Trying to automatically install the python3-venv package...${NC}"
-            if command -v apt &> /dev/null; then
-                sudo apt update && sudo apt install -y python3-venv
-                python3 -m venv venv
-            else
-                echo -e "${YELLOW}Please install the python3-venv package manually and try again.${NC}"
-                exit 1
-            fi
+            echo "[ERROR] Failed to create venv. Make sure python3-venv is installed."
+            exit 1
         fi
-
-        echo "Installing dependencies (this may take a minute)..."
-        ./venv/bin/pip install -r requirements.txt
-        
-        echo -e "${GREEN}Python setup completed successfully!${NC}\n"
+        echo "Installing dependencies..."
+        venv/bin/pip install -r requirements.txt
+        echo "[SUCCESS] Setup completed!"
     else
-        echo -e "${YELLOW}Installation canceled. Exiting...${NC}"
+        echo "Installation canceled. Exiting..."
         exit 0
     fi
 fi
 
-# 3. Request Sudo Password Upfront
-echo -e "${YELLOW}Requesting administrator privileges (sudo) for network monitoring...${NC}"
-sudo -v # Prompts and validates the user's password here to avoid hanging in the background
-
-# 4. Base Command Configuration
-if [ "$MODE" == "tray" ]; then
-    echo -e "${GREEN}Starting Pingator in the System Tray...${NC}"
-    CMD="sudo ./venv/bin/python tray.py"
-else
-    echo -e "${GREEN}Starting Pingator in Web mode...${NC}"
-    CMD="sudo ./venv/bin/streamlit run app.py --server.address=0.0.0.0"
+# 3. Streamlit Silent Configuration (The Magic for New Users)
+# Creates the invisible credentials file with a blank email for Linux
+if [ ! -f "$HOME/.streamlit/credentials.toml" ]; then
+    mkdir -p "$HOME/.streamlit"
+    echo "[general]" > "$HOME/.streamlit/credentials.toml"
+    echo "email = \"\"" >> "$HOME/.streamlit/credentials.toml"
 fi
 
-# 5. Execution (Background vs Debug)
-if [ "$DETACHED" = true ]; then
-    echo -e "${YELLOW}The process has been sent to the background! You can now close this terminal.${NC}"
+# 4. Build Command
+if [ "$MODE" == "tray" ]; then
+    echo "Starting Pingator in the System Tray..."
+    CMD="venv/bin/python tray.py"
+else
+    echo "Starting Pingator in Web mode..."
+    CMD="venv/bin/python -m streamlit run app.py --server.address=0.0.0.0 --browser.gatherUsageStats=false $HEADLESS_FLAG"
+fi
+
+# 5. Execution
+if [ "$DETACHED" == "true" ]; then
+    echo "The process has been sent to the background!"
+    
+    # Runs Streamlit detached from the terminal
     nohup $CMD > /dev/null 2>&1 &
-    disown
+    
+    # Fallback message and auto-open browser logic
+    if [ "$MODE" == "web" ]; then
+        echo "---------------------------------------------------"
+        echo "🌐 Pingator is running at: http://localhost:8501"
+        echo "(If the browser doesn't open automatically or you are on a headless server, copy and paste this link!)"
+        echo "---------------------------------------------------"
+
+        # Forces the default browser to open (Chrome, Brave, Firefox, etc.)
+        if [ -z "$HEADLESS_FLAG" ]; then
+            sleep 2 # Gives the Python server 2 seconds to start before opening the tab
+            
+            # gio open works much better on Ubuntu/Wayland and avoids Keyring prompt bugs
+            if command -v gio &> /dev/null; then
+                gio open "http://localhost:8501" > /dev/null 2>&1
+            else
+                xdg-open "http://localhost:8501" </dev/null > /dev/null 2>&1
+            fi
+        fi
+    fi
+    
+    echo "Closing this terminal in 3 seconds..."
+    sleep 3
     exit 0
 else
-    echo -e "${CYAN}Debug mode activated. Keeping the terminal open to display logs.${NC}"
-    echo -e "${CYAN}Press CTRL+C to stop Pingator.${NC}"
+    echo "[Debug Mode Activated] Press CTRL+C to stop."
     echo "---------------------------------------------------"
-    $CMD
+    eval $CMD
 fi
